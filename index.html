@@ -695,10 +695,14 @@ async function pushOrderToGithub(order) {
         content: content
       })
     });
-    return res.ok;
+    if (!res.ok) {
+      let bodyText = '';
+      try { bodyText = JSON.stringify(await res.json()); } catch(e2) {}
+      return { ok: false, debug: 'HTTP ' + res.status + ' ' + bodyText };
+    }
+    return { ok: true };
   } catch (e) {
-    console.error('GitHub push failed', e);
-    return false;
+    return { ok: false, debug: 'Network/CORS error: ' + (e && e.message ? e.message : String(e)) };
   }
 }
 
@@ -994,12 +998,13 @@ async function placeOrder() {
   saveState();
   updateCartBadge();
 
-  const ok = await pushOrderToGithub(order);
+  const result = await pushOrderToGithub(order);
 
-  if (ok) {
+  if (result.ok) {
     showToast('অর্ডার সফলভাবে দেওয়া হয়েছে!');
   } else {
-    showToast('অর্ডার সেভ হয়েছে, কিন্তু সার্ভারে পাঠাতে সমস্যা হয়েছে');
+    showToast('সার্ভারে পাঠাতে সমস্যা হয়েছে');
+    alert('DEBUG INFO (এই বার্তার স্ক্রিনশট পাঠান):\n' + result.debug);
   }
   showView('myorders');
 }

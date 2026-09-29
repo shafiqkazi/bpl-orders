@@ -921,6 +921,7 @@ function renderCart() {
       <div class="row"><span>মোট আইটেম</span><span>${items.reduce((s,i)=>s+i.qty,0)} টি</span></div>
       <div class="row total"><span>সর্বমোট</span><span>&#2547;${total.toFixed(2)}</span></div>
       <button class="primary-btn" onclick="placeOrder()">${state.editingOrderId ? 'পরিবর্তন সেভ করে হোয়াটসঅ্যাপে পাঠান' : 'অর্ডার কনফার্ম করুন'}</button>
+      <button class="secondary-btn" onclick="saveOrderOnly()">আমার অর্ডারে সেভ করুন</button>
     </div>
   `;
 }
@@ -1062,8 +1063,25 @@ function downloadInvoicePDF(order) {
   doc.text('Thank you for ordering from BEXIMCO PHARMACEUTICAL LTD.', 40, pageHeight - 42);
   doc.text('This is a system-generated invoice from the BPL Medicine Order App.', 40, pageHeight - 28);
 
-  const blobUrl = doc.output('bloburl');
-  window.open(blobUrl, '_blank');
+  const fileName = 'Invoice_' + order.id + '.pdf';
+
+  // Try opening in a new tab first (works on most desktop browsers, lets the
+  // customer view/print before deciding to save). Many mobile browsers block
+  // window.open with a blob: URL, so we detect that and fall back to a
+  // direct download instead (doc.save uses a temporary <a download> click,
+  // which reliably works on both desktop and mobile).
+  let opened = null;
+  try {
+    const blobUrl = doc.output('bloburl');
+    opened = window.open(blobUrl, '_blank');
+  } catch (e) {
+    opened = null;
+  }
+
+  if (!opened) {
+    doc.save(fileName);
+    showToast('ইনভয়েস ডাউনলোড হয়েছে, ফাইলটি চেক করুন');
+  }
 }
 
 function generateOrderId() {
@@ -1074,19 +1092,19 @@ function generateOrderId() {
   return id;
 }
 
-function placeOrder() {
+function buildAndSaveOrder() {
   const selectedProfile = getSelectedProfile();
   if (!selectedProfile || !selectedProfile.shop || !selectedProfile.phone) {
     showToast('আগে প্রোফাইলে দোকানের তথ্য দিন');
     showView('profile');
-    return;
+    return null;
   }
   const items = Object.entries(state.cart).map(([pid, info]) => {
     const p = PRODUCTS.find(pp => pp.id == pid);
     return p ? { id: p.id, name: p.name, pack_size: p.pack_size, price: p.price, qty: info.qty } : null;
   }).filter(Boolean);
 
-  if (items.length === 0) return;
+  if (items.length === 0) return null;
 
   const total = items.reduce((s, i) => s + i.price * i.qty, 0);
 
@@ -1126,9 +1144,24 @@ function placeOrder() {
   saveState();
   updateCartBadge();
 
+  return order;
+}
+
+function placeOrder() {
+  const order = buildAndSaveOrder();
+  if (!order) return;
+
   sendOrderViaWhatsApp(order);
   showToast('অর্ডার সেভ হয়েছে, হোয়াটসঅ্যাপে পাঠান!');
 
+  showView('myorders');
+}
+
+function saveOrderOnly() {
+  const order = buildAndSaveOrder();
+  if (!order) return;
+
+  showToast('অর্ডার "আমার অর্ডার"-এ সেভ হয়েছে');
   showView('myorders');
 }
 
@@ -1242,12 +1275,12 @@ function orderCardHtml(o) {
     <div class="oc-detail">সর্বমোট: &#2547;${o.total.toFixed(2)}</div>
     <div class="oc-items">${itemsHtml}</div>
     <div style="display:flex; gap:8px; margin-top:8px;">
-      <button class="secondary-btn" style="flex:1;" onclick="editOrder('${o.id}')">&#9998; এডিট</button>
-      <button class="secondary-btn" style="flex:1; color:var(--danger); border-color:var(--danger);" onclick="deleteOrder('${o.id}')">&#128465; ডিলিট</button>
+      <button class="secondary-btn" style="flex:1; margin-top:0;" onclick="editOrder('${o.id}')">&#9998; এডিট</button>
+      <button class="secondary-btn" style="flex:1; margin-top:0; color:var(--danger); border-color:var(--danger);" onclick="deleteOrder('${o.id}')">&#128465; ডিলিট</button>
     </div>
     <div style="display:flex; gap:8px; margin-top:8px;">
-      <button class="secondary-btn" style="flex:1;" onclick='sendOrderViaWhatsApp(${JSON.stringify(o).replace(/'/g, "&#39;")})'>&#128241; হোয়াটসঅ্যাপে আবার পাঠান</button>
-      <button class="primary-btn" style="flex:1; margin-top:0;" onclick='downloadInvoicePDF(${JSON.stringify(o).replace(/'/g, "&#39;")})'>&#128190; PDF Download</button>
+      <button class="secondary-btn" style="flex:1; margin-top:0;" onclick='sendOrderViaWhatsApp(${JSON.stringify(o).replace(/'/g, "&#39;")})'>&#128241; হোয়াটসঅ্যাপে আবার পাঠান</button>
+      <button class="secondary-btn" style="flex:1; margin-top:0; color:var(--accent); border-color:var(--accent);" onclick='downloadInvoicePDF(${JSON.stringify(o).replace(/'/g, "&#39;")})'>&#128190; PDF Download</button>
     </div>
   </div>`;
 }

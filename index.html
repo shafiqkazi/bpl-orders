@@ -474,6 +474,8 @@
   }
   #appRoot { display: none; }
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf-autotable.min.js"></script>
 </head>
 <body>
 
@@ -946,6 +948,132 @@ function removeFromCart(pid) {
   renderCart();
 }
 
+function downloadInvoicePDF(order) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  const primary = [13, 108, 184];     // #0d6cb8
+  const primaryDark = [8, 77, 133];   // #084d85
+  const accent = [255, 138, 61];      // #ff8a3d
+  const textDark = [27, 43, 39];      // #1b2b27
+  const muted = [107, 124, 120];      // #6b7c78
+
+  // ---- Header band ----
+  doc.setFillColor(...primaryDark);
+  doc.rect(0, 0, pageWidth, 110, 'F');
+  doc.setFillColor(...accent);
+  doc.rect(0, 106, pageWidth, 4, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
+  doc.text('BEXIMCO PHARMACEUTICAL LTD', 40, 45);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10.5);
+  doc.text('Medicine Order Invoicing System', 40, 63);
+  doc.text('Powered by Shafiq Kazi', 40, 78);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(16);
+  doc.text('INVOICE', pageWidth - 40, 45, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10.5);
+  doc.text(order.id, pageWidth - 40, 63, { align: 'right' });
+  const dateStr = new Date(order.date).toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  doc.text(dateStr, pageWidth - 40, 78, { align: 'right' });
+
+  // ---- Customer info card ----
+  let y = 138;
+  doc.setFillColor(244, 247, 246);
+  doc.roundedRect(40, y, pageWidth - 80, 78, 6, 6, 'F');
+  doc.setTextColor(...muted);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.text('BILL TO', 56, y + 20);
+  doc.setTextColor(...textDark);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12.5);
+  doc.text(order.customer.shop || '', 56, y + 38);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(10);
+  doc.text(`${order.customer.name || ''}   |   ${order.customer.phone || ''}`, 56, y + 54);
+  if (order.customer.address) {
+    doc.setTextColor(...muted);
+    doc.text(order.customer.address, 56, y + 68, { maxWidth: pageWidth - 240 });
+  }
+
+  doc.setTextColor(...muted);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.text('STATUS', pageWidth - 150, y + 20);
+  doc.setTextColor(...primary);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(12.5);
+  doc.text(statusLabel(order.status).toUpperCase(), pageWidth - 150, y + 38);
+
+  // ---- Items table ----
+  const rows = order.items.map(it => [
+    it.name,
+    it.pack_size || '',
+    String(it.qty),
+    '৳' + it.price.toFixed(2),
+    '৳' + (it.price * it.qty).toFixed(2)
+  ]);
+
+  doc.autoTable({
+    startY: y + 96,
+    margin: { left: 40, right: 40 },
+    head: [['Item', 'Pack Size', 'Qty', 'Unit Price', 'Subtotal']],
+    body: rows,
+    theme: 'grid',
+    styles: { font: 'helvetica', fontSize: 10, cellPadding: 8, textColor: textDark },
+    headStyles: { fillColor: primary, textColor: 255, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [244, 247, 246] },
+    columnStyles: {
+      2: { halign: 'center' },
+      3: { halign: 'right' },
+      4: { halign: 'right' }
+    }
+  });
+
+  let finalY = doc.lastAutoTable.finalY + 20;
+
+  // ---- Total box ----
+  const boxW = 220;
+  doc.setFillColor(...primaryDark);
+  doc.roundedRect(pageWidth - 40 - boxW, finalY, boxW, 42, 6, 6, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text('GRAND TOTAL', pageWidth - 40 - boxW + 16, finalY + 26);
+  doc.setFontSize(15);
+  doc.text('৳' + order.total.toFixed(2), pageWidth - 40 - 16, finalY + 27, { align: 'right' });
+
+  // ---- Footer ----
+  const pageHeight = doc.internal.pageSize.getHeight();
+  doc.setDrawColor(...accent);
+  doc.setLineWidth(1.2);
+  doc.line(40, pageHeight - 60, pageWidth - 40, pageHeight - 60);
+  doc.setTextColor(...muted);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(9.5);
+  doc.text('Thank you for ordering from BEXIMCO PHARMACEUTICAL LTD.', 40, pageHeight - 42);
+  doc.text('This is a system-generated invoice from the BPL Medicine Order App.', 40, pageHeight - 28);
+
+  const blobUrl = doc.output('bloburl');
+  window.open(blobUrl, '_blank');
+}
+
+function generateOrderId() {
+  let id;
+  do {
+    id = 'ORD' + Math.floor(100000 + Math.random() * 900000);
+  } while (state.orders.some(o => o.id === id));
+  return id;
+}
+
 function placeOrder() {
   const selectedProfile = getSelectedProfile();
   if (!selectedProfile || !selectedProfile.shop || !selectedProfile.phone) {
@@ -972,7 +1100,7 @@ function placeOrder() {
       order.date = new Date().toISOString();
     } else {
       order = {
-        id: 'ORD' + Date.now(),
+        id: generateOrderId(),
         date: new Date().toISOString(),
         customer: { ...selectedProfile },
         items,
@@ -984,7 +1112,7 @@ function placeOrder() {
     state.editingOrderId = null;
   } else {
     order = {
-      id: 'ORD' + Date.now(),
+      id: generateOrderId(),
       date: new Date().toISOString(),
       customer: { ...selectedProfile },
       items,
@@ -1117,7 +1245,10 @@ function orderCardHtml(o) {
       <button class="secondary-btn" style="flex:1;" onclick="editOrder('${o.id}')">&#9998; এডিট</button>
       <button class="secondary-btn" style="flex:1; color:var(--danger); border-color:var(--danger);" onclick="deleteOrder('${o.id}')">&#128465; ডিলিট</button>
     </div>
-    <button class="secondary-btn" style="margin-top:8px; width:100%;" onclick='sendOrderViaWhatsApp(${JSON.stringify(o).replace(/'/g, "&#39;")})'>&#128241; হোয়াটসঅ্যাপে আবার পাঠান</button>
+    <div style="display:flex; gap:8px; margin-top:8px;">
+      <button class="secondary-btn" style="flex:1;" onclick='sendOrderViaWhatsApp(${JSON.stringify(o).replace(/'/g, "&#39;")})'>&#128241; হোয়াটসঅ্যাপে আবার পাঠান</button>
+      <button class="primary-btn" style="flex:1; margin-top:0;" onclick='downloadInvoicePDF(${JSON.stringify(o).replace(/'/g, "&#39;")})'>&#128190; PDF Download</button>
+    </div>
   </div>`;
 }
 

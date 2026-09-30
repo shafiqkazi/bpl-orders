@@ -1016,7 +1016,7 @@ function downloadInvoicePDF(order) {
   doc.setTextColor(...primary);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12.5);
-  doc.text(statusLabel(order.status).toUpperCase(), pageWidth - 150, y + 38);
+  doc.text(statusLabelEn(order.status), pageWidth - 150, y + 38);
 
   // ---- Items table (drawn manually with core jsPDF, no external plugin needed) ----
   const tableX = 40;
@@ -1072,9 +1072,9 @@ function downloadInvoicePDF(order) {
     doc.text(nameLines, colX.name, ty + 15);
     doc.text(it.pack_size || '', colX.pack, ty + 15);
     doc.text(String(it.qty), colX.qty + colW.qty - 10, ty + 15, { align: 'right' });
-    doc.text('৳' + it.price.toFixed(2), colX.price + colW.price - 10, ty + 15, { align: 'right' });
+    doc.text('Tk ' + it.price.toFixed(2), colX.price + colW.price - 10, ty + 15, { align: 'right' });
     doc.setFont('helvetica', 'bold');
-    doc.text('৳' + (it.price * it.qty).toFixed(2), colX.sub + colW.sub - 10, ty + 15, { align: 'right' });
+    doc.text('Tk ' + (it.price * it.qty).toFixed(2), colX.sub + colW.sub - 10, ty + 15, { align: 'right' });
 
     ty += rowH;
   });
@@ -1090,7 +1090,18 @@ function downloadInvoicePDF(order) {
   doc.setFontSize(11);
   doc.text('GRAND TOTAL', pageWidth - 40 - boxW + 16, finalY + 26);
   doc.setFontSize(15);
-  doc.text('৳' + order.total.toFixed(2), pageWidth - 40 - 16, finalY + 27, { align: 'right' });
+  doc.text('Tk ' + order.total.toFixed(2), pageWidth - 40 - 16, finalY + 27, { align: 'right' });
+
+  // ---- Amount in words ----
+  let wordsY = finalY + 42 + 22;
+  doc.setTextColor(...textDark);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.text('In Word:', 40, wordsY);
+  doc.setFont('helvetica', 'italic');
+  doc.setFontSize(9.5);
+  const wordsText = doc.splitTextToSize(amountInWordsEn(order.total), pageWidth - 130);
+  doc.text(wordsText, 95, wordsY);
 
   // ---- Footer ----
   doc.setDrawColor(...accent);
@@ -1272,6 +1283,57 @@ function deleteProfile(id) {
 
 function statusLabel(s) {
   return { pending: 'পেন্ডিং', processing: 'প্রসেসিং', delivered: 'ডেলিভারড' }[s] || s;
+}
+
+function statusLabelEn(s) {
+  return { pending: 'PENDING', processing: 'PROCESSING', delivered: 'DELIVERED' }[s] || s.toUpperCase();
+}
+
+function numberToWordsEn(num) {
+  const ones = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten',
+    'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+  const tens = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+  function threeDigits(n) {
+    let s = '';
+    if (n >= 100) {
+      s += ones[Math.floor(n / 100)] + ' Hundred ';
+      n %= 100;
+    }
+    if (n >= 20) {
+      s += tens[Math.floor(n / 10)] + ' ';
+      n %= 10;
+    }
+    if (n > 0) {
+      s += ones[n] + ' ';
+    }
+    return s.trim();
+  }
+
+  if (num === 0) return 'Zero';
+
+  let words = '';
+  const crore = Math.floor(num / 10000000); num %= 10000000;
+  const lakh = Math.floor(num / 100000); num %= 100000;
+  const thousand = Math.floor(num / 1000); num %= 1000;
+  const rest = num;
+
+  if (crore) words += threeDigits(crore) + ' Crore ';
+  if (lakh) words += threeDigits(lakh) + ' Lakh ';
+  if (thousand) words += threeDigits(thousand) + ' Thousand ';
+  if (rest) words += threeDigits(rest);
+
+  return words.trim();
+}
+
+function amountInWordsEn(amount) {
+  const taka = Math.floor(amount);
+  const paisa = Math.round((amount - taka) * 100);
+  let result = 'Taka ' + numberToWordsEn(taka);
+  if (paisa > 0) {
+    result += ' and ' + numberToWordsEn(paisa) + ' Paisa';
+  }
+  return result + ' Only';
 }
 
 function renderMyOrders() {

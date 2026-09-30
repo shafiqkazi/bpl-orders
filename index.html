@@ -475,7 +475,6 @@
   #appRoot { display: none; }
 </style>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf-autotable.min.js"></script>
 </head>
 <body>
 
@@ -1019,32 +1018,68 @@ function downloadInvoicePDF(order) {
   doc.setFontSize(12.5);
   doc.text(statusLabel(order.status).toUpperCase(), pageWidth - 150, y + 38);
 
-  // ---- Items table ----
-  const rows = order.items.map(it => [
-    it.name,
-    it.pack_size || '',
-    String(it.qty),
-    '৳' + it.price.toFixed(2),
-    '৳' + (it.price * it.qty).toFixed(2)
-  ]);
+  // ---- Items table (drawn manually with core jsPDF, no external plugin needed) ----
+  const tableX = 40;
+  const tableW = pageWidth - 80;
+  const colW = { name: tableW * 0.36, pack: tableW * 0.18, qty: tableW * 0.12, price: tableW * 0.17, sub: tableW * 0.17 };
+  const colX = {
+    name: tableX + 10,
+    pack: tableX + colW.name,
+    qty: tableX + colW.name + colW.pack,
+    price: tableX + colW.name + colW.pack + colW.qty,
+    sub: tableX + colW.name + colW.pack + colW.qty + colW.price
+  };
+  const pageHeight = doc.internal.pageSize.getHeight();
+  let ty = y + 96;
+  const rowPad = 8;
 
-  doc.autoTable({
-    startY: y + 96,
-    margin: { left: 40, right: 40 },
-    head: [['Item', 'Pack Size', 'Qty', 'Unit Price', 'Subtotal']],
-    body: rows,
-    theme: 'grid',
-    styles: { font: 'helvetica', fontSize: 10, cellPadding: 8, textColor: textDark },
-    headStyles: { fillColor: primary, textColor: 255, fontStyle: 'bold' },
-    alternateRowStyles: { fillColor: [244, 247, 246] },
-    columnStyles: {
-      2: { halign: 'center' },
-      3: { halign: 'right' },
-      4: { halign: 'right' }
+  function drawTableHeader() {
+    doc.setFillColor(...primary);
+    doc.rect(tableX, ty, tableW, 26, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.text('Item', colX.name, ty + 17);
+    doc.text('Pack Size', colX.pack, ty + 17);
+    doc.text('Qty', colX.qty + colW.qty - 10, ty + 17, { align: 'right' });
+    doc.text('Unit Price', colX.price + colW.price - 10, ty + 17, { align: 'right' });
+    doc.text('Subtotal', colX.sub + colW.sub - 10, ty + 17, { align: 'right' });
+    ty += 26;
+  }
+
+  drawTableHeader();
+
+  order.items.forEach((it, idx) => {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    const nameLines = doc.splitTextToSize(it.name, colW.name - 16);
+    const rowH = Math.max(24, nameLines.length * 12 + rowPad * 2 - 8);
+
+    if (ty + rowH > pageHeight - 90) {
+      doc.addPage();
+      ty = 40;
+      drawTableHeader();
     }
+
+    if (idx % 2 === 1) {
+      doc.setFillColor(244, 247, 246);
+      doc.rect(tableX, ty, tableW, rowH, 'F');
+    }
+    doc.setDrawColor(...[227, 233, 231]);
+    doc.rect(tableX, ty, tableW, rowH);
+
+    doc.setTextColor(...textDark);
+    doc.text(nameLines, colX.name, ty + 15);
+    doc.text(it.pack_size || '', colX.pack, ty + 15);
+    doc.text(String(it.qty), colX.qty + colW.qty - 10, ty + 15, { align: 'right' });
+    doc.text('৳' + it.price.toFixed(2), colX.price + colW.price - 10, ty + 15, { align: 'right' });
+    doc.setFont('helvetica', 'bold');
+    doc.text('৳' + (it.price * it.qty).toFixed(2), colX.sub + colW.sub - 10, ty + 15, { align: 'right' });
+
+    ty += rowH;
   });
 
-  let finalY = doc.lastAutoTable.finalY + 20;
+  let finalY = ty + 20;
 
   // ---- Total box ----
   const boxW = 220;
@@ -1058,7 +1093,6 @@ function downloadInvoicePDF(order) {
   doc.text('৳' + order.total.toFixed(2), pageWidth - 40 - 16, finalY + 27, { align: 'right' });
 
   // ---- Footer ----
-  const pageHeight = doc.internal.pageSize.getHeight();
   doc.setDrawColor(...accent);
   doc.setLineWidth(1.2);
   doc.line(40, pageHeight - 60, pageWidth - 40, pageHeight - 60);
